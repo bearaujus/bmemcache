@@ -7,7 +7,7 @@
 
 ## Installation
 
-To install BDataMatrix, run:
+To install BMemCache, run:
 
 ```sh
 go get github.com/bearaujus/bmemcache
