@@ -33,6 +33,22 @@ type BMemCache[T any] interface {
 	//   - An error if the key does not exist.
 	Delete(keys ...string) error
 
+	// Keys returns a list of all unique cache keys currently stored.
+	//
+	// Returns:
+	//   - A slice of strings, where each string represents a cache key.
+	Keys() [][]string
+
+	// KeysFromPrefix returns all cache keys that match the given prefix pattern.
+	//
+	// Parameters:
+	//   - keys: A variadic list of strings used to construct the prefix to match against stored cache keys.
+	//           The prefix typically represents the beginning part of a key hierarchy.
+	//
+	// Returns:
+	//   - A slice of strings representing cache keys that start with the specified prefix.
+	KeysFromPrefix(keys ...string) [][]string
+
 	// SetWithExp stores the data in the cache with an expiration time.
 	//
 	// Parameters:
@@ -199,6 +215,44 @@ func (c *bmemCache[T]) Delete(keys ...string) error {
 	}
 	delete(c.items, key)
 	return nil
+}
+
+func (c *bmemCache[T]) Keys() [][]string {
+	keys := make([][]string, len(c.items))
+	c.mu.RLock()
+	var i int
+	for k := range c.items {
+		keys[i] = deGenerateCacheKey(c.cacheKeySeparator, k)
+		i++
+	}
+	c.mu.RUnlock()
+	return keys
+}
+
+func (c *bmemCache[T]) KeysFromPrefix(keys ...string) [][]string {
+	if len(keys) == 0 {
+		if _, err := c.Get(generateCacheKey(c.cacheKeySeparator, keys...)); err != nil {
+			return [][]string{}
+		}
+		return [][]string{{}}
+	}
+	var ret [][]string
+	for _, existingKeyFrags := range c.Keys() {
+		if len(existingKeyFrags) < len(keys) {
+			continue
+		}
+		match := true
+		for i := range keys {
+			if keys[i] != existingKeyFrags[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			ret = append(ret, existingKeyFrags)
+		}
+	}
+	return ret
 }
 
 func (c *bmemCache[T]) IsExist(keys ...string) bool {
