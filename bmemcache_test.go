@@ -31,6 +31,110 @@ func TestGetNonExistentKey(t *testing.T) {
 	}
 }
 
+func TestKeys(t *testing.T) {
+	cache := New[string](WithCacheKeySeparator("|"))
+	defer cache.Close()
+
+	// Initially empty
+	if len(cache.Keys()) != 0 {
+		t.Errorf("expected 0 keys in empty cache, got: %d", len(cache.Keys()))
+	}
+
+	// Add keys
+	cache.Set("val1", "a", "b", "c")
+	cache.Set("val2", "x", "y")
+	cache.Set("val3", "foo")
+	cache.Set("val4")
+
+	keys := cache.Keys()
+	if len(keys) != 4 {
+		t.Errorf("expected 4 keys, got: %d", len(keys))
+	}
+
+	// Ensure all can be retrieved
+	if v, err := cache.Get("a", "b", "c"); err != nil || v != "val1" {
+		t.Errorf("unexpected get result for a|b|c: %v, %v", v, err)
+	}
+	if v, err := cache.Get("x", "y"); err != nil || v != "val2" {
+		t.Errorf("unexpected get result for x|y: %v, %v", v, err)
+	}
+	if v, err := cache.Get("foo"); err != nil || v != "val3" {
+		t.Errorf("unexpected get result for foo: %v, %v", v, err)
+	}
+	if v, err := cache.Get(); err != nil || v != "val4" {
+		t.Errorf("unexpected get result for empty: %v, %v", v, err)
+	}
+}
+
+func TestKeysFromPrefix(t *testing.T) {
+	cache := New[string](WithCacheKeySeparator("|"))
+	defer cache.Close()
+
+	// Add keys
+	cache.Set("zero")
+	cache.Set("one", "a", "b", "c")
+	cache.Set("two", "a", "b", "d")
+	cache.Set("three", "x", "y", "z")
+	cache.Set("short", "a", "b")
+	cache.Set("hi", "a", "c")
+
+	// Match: prefix a
+	prefixMatches := cache.KeysFromPrefix("a")
+	if len(prefixMatches) != 4 {
+		t.Errorf("expected 4 prefix matches for a, got: %d", len(prefixMatches))
+	}
+	// Match: prefix a|b
+	prefixMatches = cache.KeysFromPrefix("a", "b")
+	if len(prefixMatches) != 3 {
+		t.Errorf("expected 3 prefix matches for a|b, got: %d", len(prefixMatches))
+	}
+	// Test if Get works with returned keys
+	for _, keyParts := range prefixMatches {
+		if _, err := cache.Get(keyParts...); err != nil {
+			t.Errorf("expected key %v to exist, got error: %v", keyParts, err)
+		}
+	}
+
+	// Match: exact full key
+	full := cache.KeysFromPrefix("x", "y", "z")
+	if len(full) != 1 {
+		t.Errorf("expected 1 exact match for x|y|z, got: %d", len(full))
+	}
+	if _, err := cache.Get(full[0]...); err != nil {
+		t.Errorf("unexpected get failure for exact match: %v", err)
+	}
+
+	// empty: key more than
+	empty := cache.KeysFromPrefix("x", "y", "z", "d")
+	if len(empty) != 0 {
+		t.Errorf("expected no matches for empty prefix, got: %d", len(empty))
+	}
+
+	// Empty prefix
+	prefixMatches = cache.KeysFromPrefix()
+	if len(prefixMatches) != 1 {
+		t.Errorf("expected 1 prefix matches for empty keys, got: %d", len(prefixMatches))
+	}
+
+	// test get value
+	r, err := cache.Get(prefixMatches[0]...)
+	if err != nil {
+		t.Errorf("unexpected get failure for exact match: %v", err)
+	}
+	if r != "zero" {
+		t.Errorf("expected 'zero', got: %s", r)
+	}
+
+	cache2 := New[string](WithCacheKeySeparator("|"))
+	defer cache2.Close()
+
+	// Empty prefix + empty key
+	empty = cache2.KeysFromPrefix()
+	if len(empty) != 0 {
+		t.Errorf("expected no matches for empty prefix, got: %d", len(empty))
+	}
+}
+
 // TestSetWithExp checks that a value set with an expiration is available initially,
 // then returns ErrExpired after the duration passes.
 func TestSetWithExp(t *testing.T) {
@@ -191,4 +295,78 @@ func TestClose(t *testing.T) {
 	// Call Close multiple times to ensure no panic occurs.
 	cache.Close()
 	cache.Close()
+}
+
+func TestGenerateCacheKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		separator string
+		keys      []string
+		expected  string
+	}{
+		{
+			name:      "multiple keys",
+			separator: ":",
+			keys:      []string{"user", "123", "settings"},
+			expected:  "user:123:settings",
+		},
+		{
+			name:      "single key",
+			separator: "|",
+			keys:      []string{"token"},
+			expected:  "token",
+		},
+		{
+			name:      "empty keys",
+			separator: "-",
+			keys:      []string{},
+			expected:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := generateCacheKey(tt.separator, tt.keys...)
+			if result != tt.expected {
+				t.Errorf("expected '%s', got '%s'", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestWithAutoCleanUpApply(t *testing.T) {
+	tests := []struct {
+		name           string
+		duration       time.Duration
+		expectedEnable bool
+		expectedValue  time.Duration
+	}{
+		{
+			name:           "non-zero duration",
+			duration:       10 * time.Second,
+			expectedEnable: true,
+			expectedValue:  10 * time.Second,
+		},
+		{
+			name:           "zero duration",
+			duration:       0,
+			expectedEnable: true,
+			expectedValue:  time.Minute,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opt := &option{}
+			w := &withAutoCleanUp{duration: tt.duration}
+			w.Apply(opt)
+
+			if !opt.AutoCleanup {
+				t.Errorf("expected AutoCleanup to be true")
+			}
+			if opt.AutoCleanupInterval != tt.expectedValue {
+				t.Errorf("expected AutoCleanupInterval to be %v, got %v", tt.expectedValue, opt.AutoCleanupInterval)
+			}
+		})
+	}
 }
