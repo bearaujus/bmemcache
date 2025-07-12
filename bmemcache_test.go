@@ -7,7 +7,7 @@ import (
 
 // TestSetAndGet verifies that a value can be stored and then retrieved.
 func TestSetAndGet(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	cache.Set("hello", "greeting")
@@ -22,7 +22,7 @@ func TestSetAndGet(t *testing.T) {
 
 // TestGetNonExistentKey verifies that attempting to retrieve a non-existent key returns ErrNotFound.
 func TestGetNonExistentKey(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	_, err := cache.Get("nonexistent")
@@ -32,7 +32,7 @@ func TestGetNonExistentKey(t *testing.T) {
 }
 
 func TestKeys(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	// Initially empty
@@ -67,7 +67,7 @@ func TestKeys(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	// Add keys
@@ -135,7 +135,7 @@ func TestGet(t *testing.T) {
 	}
 
 	check = map[string]bool{"zero": false, "one": false, "two": false, "three": false, "short": false, "hi": false}
-	data = cache.Gets()
+	data, err = cache.Gets()
 	for _, v := range data {
 		if _, ok := check[v]; !ok {
 			t.Errorf("expected value %v not to be exist", v)
@@ -182,20 +182,11 @@ func TestGet(t *testing.T) {
 
 	// Empty prefix
 	prefixMatches = cache.KeysFromPrefix()
-	if len(prefixMatches) != 1 {
-		t.Errorf("expected 1 prefix matches for empty keys, got: %d", len(prefixMatches))
+	if len(prefixMatches) != 6 {
+		t.Errorf("expected 6 prefix matches for empty keys, got: %d", len(prefixMatches))
 	}
 
-	// test get value
-	r, err := cache.Get(prefixMatches[0]...)
-	if err != nil {
-		t.Errorf("unexpected get failure for exact match: %v", err)
-	}
-	if r != "zero" {
-		t.Errorf("expected 'zero', got: %s", r)
-	}
-
-	cache2 := New[string](WithCacheKeySeparator("|"))
+	cache2 := New[string]()
 	defer cache2.Close()
 
 	// Empty prefix + empty key
@@ -204,16 +195,16 @@ func TestGet(t *testing.T) {
 		t.Errorf("expected no matches for empty prefix, got: %d", len(empty))
 	}
 
-	data = cache2.Gets()
-	if len(data) != 0 {
-		t.Errorf("expected length 0, got: %v", err)
+	data, err = cache2.Gets()
+	if err == nil {
+		t.Errorf("expected error, got: %v", err)
 	}
 }
 
 // TestSetWithExp checks that a value set with an expiration is available initially,
 // then returns ErrExpired after the duration passes.
 func TestSetWithExp(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	cache.SetWithExp("temp", 100*time.Millisecond, "key")
@@ -234,7 +225,7 @@ func TestSetWithExp(t *testing.T) {
 
 // TestTTL verifies that TTL returns the correct duration for expiring values and -1 for non-expiring values.
 func TestTTL(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	// For a non-expiring value, TTL should return -1.
@@ -273,7 +264,7 @@ func TestTTL(t *testing.T) {
 
 // TestIsExist verifies the IsExist method.
 func TestIsExist(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	if cache.IsExist("key") {
@@ -287,7 +278,7 @@ func TestIsExist(t *testing.T) {
 
 // TestIsExpired verifies that IsExpired correctly identifies expired and non-expired cache entries.
 func TestIsExpired(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	// Case 1: Non-existent key should return an error
@@ -320,7 +311,7 @@ func TestIsExpired(t *testing.T) {
 
 // TestDelete checks that deletion of keys works as expected.
 func TestDelete(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	err := cache.Delete("key")
@@ -339,7 +330,7 @@ func TestDelete(t *testing.T) {
 
 // TestClear verifies that the Clear method removes all entries.
 func TestClear(t *testing.T) {
-	cache := New[string](WithCacheKeySeparator("|"))
+	cache := New[string]()
 	defer cache.Close()
 
 	cache.Set("value", "key1")
@@ -353,7 +344,7 @@ func TestClear(t *testing.T) {
 // TestAutoCleanup verifies that autoCleanup removes expired entries automatically.
 func TestAutoCleanup(t *testing.T) {
 	// Enable auto-cleanup with a short interval.
-	cache := New[string](WithAutoCleanUp(50*time.Millisecond), WithCacheKeySeparator("|"))
+	cache := New[string](WithAutoCleanUp(50 * time.Millisecond))
 	defer cache.Close()
 
 	cache.SetWithExp("temp", 30*time.Millisecond, "key")
@@ -366,7 +357,7 @@ func TestAutoCleanup(t *testing.T) {
 
 // TestClose ensures that calling Close stops the cleanup goroutine and is safe to call multiple times.
 func TestClose(t *testing.T) {
-	cache := New[string](WithAutoCleanUp(50*time.Millisecond), WithCacheKeySeparator("|"))
+	cache := New[string](WithAutoCleanUp(50 * time.Millisecond))
 	// Call Close multiple times to ensure no panic occurs.
 	cache.Close()
 	cache.Close()
@@ -374,34 +365,35 @@ func TestClose(t *testing.T) {
 
 func TestGenerateCacheKey(t *testing.T) {
 	tests := []struct {
-		name      string
-		separator string
-		keys      []string
-		expected  string
+		name     string
+		keys     []string
+		expected string
 	}{
 		{
-			name:      "multiple keys",
-			separator: ":",
-			keys:      []string{"user", "123", "settings"},
-			expected:  "user:123:settings",
+			name:     "multiple keys",
+			keys:     []string{"user", "123", "settings"},
+			expected: `["user","123","settings"]`,
 		},
 		{
-			name:      "single key",
-			separator: "|",
-			keys:      []string{"token"},
-			expected:  "token",
+			name:     "single key",
+			keys:     []string{"token"},
+			expected: `["token"]`,
 		},
 		{
-			name:      "empty keys",
-			separator: "-",
-			keys:      []string{},
-			expected:  "",
+			name:     "empty keys",
+			keys:     []string{},
+			expected: "[]",
+		},
+		{
+			name:     "nil keys",
+			keys:     nil,
+			expected: "[]",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := generateCacheKey(tt.separator, tt.keys...)
+			result := serializeKey(tt.keys)
 			if result != tt.expected {
 				t.Errorf("expected '%s', got '%s'", tt.expected, result)
 			}

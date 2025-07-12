@@ -41,23 +41,3 @@ func (w *withAutoCleanUp) Apply(o *option) {
 		o.AutoCleanupInterval = time.Minute
 	}
 }
-
-// WithCacheKeySeparator sets a custom separator for cache keys.
-//
-// Parameters:
-//   - separator: The string to use as a separator between keys.
-//
-// Returns:
-//   - An Option to be passed to the New() function.
-func WithCacheKeySeparator(separator string) Option {
-	return &withCacheKeySeparator{separator: separator}
-}
-
-type withCacheKeySeparator struct {
-	separator string
-}
-
-// Apply sets the cache key separator option.
-func (w *withCacheKeySeparator) Apply(o *option) {
-	o.CacheKeySeparator = w.separator
-}

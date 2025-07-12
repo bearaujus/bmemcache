@@ -28,7 +28,7 @@ type BMemCache[T any] interface {
 	//
 	// Returns:
 	//   - A slice of cached data of type T.
-	Gets() []T
+	Gets() ([]T, error)
 
 	// GetsFromPrefix retrieves all cached data items whose keys match the specified prefix.
 	//
@@ -172,8 +172,7 @@ func New[T any](options ...Option) BMemCache[T] {
 		v.Apply(o)
 	}
 	cache := &bmemCache[T]{
-		items:             make(map[string]*cacheEntry[T]),
-		cacheKeySeparator: o.CacheKeySeparator,
+		items: make(map[string]*cacheEntry[T]),
 	}
 	if o.AutoCleanup {
 		cache.doneChan = make(chan struct{})
@@ -183,11 +182,10 @@ func New[T any](options ...Option) BMemCache[T] {
 }
 
 type bmemCache[T any] struct {
-	items             map[string]*cacheEntry[T]
-	cacheKeySeparator string
-	mu                sync.RWMutex
-	doneOnce          sync.Once
-	doneChan          chan struct{}
+	items    map[string]*cacheEntry[T]
+	mu       sync.RWMutex
+	doneOnce sync.Once
+	doneChan chan struct{}
 }
 
 func (c *bmemCache[T]) Set(data T, keys ...string) {
@@ -195,20 +193,18 @@ func (c *bmemCache[T]) Set(data T, keys ...string) {
 }
 
 func (c *bmemCache[T]) SetWithExp(data T, duration time.Duration, keys ...string) {
-	key := generateCacheKey(c.cacheKeySeparator, keys...)
 	var exp time.Time
 	if duration > 0 {
 		exp = time.Now().Add(duration)
 	}
 	c.mu.Lock()
-	c.items[key] = &cacheEntry[T]{Data: data, Exp: exp}
+	c.items[serializeKey(keys)] = &cacheEntry[T]{Data: data, Exp: exp}
 	c.mu.Unlock()
 }
 
 func (c *bmemCache[T]) Get(keys ...string) (T, error) {
-	key := generateCacheKey(c.cacheKeySeparator, keys...)
 	c.mu.RLock()
-	entry, ok := c.items[key]
+	entry, ok := c.items[serializeKey(keys)]
 	c.mu.RUnlock()
 	if !ok {
 		return generateEmptyData[T](), ErrNotFound
@@ -222,7 +218,7 @@ func (c *bmemCache[T]) Get(keys ...string) (T, error) {
 	return entry.Data, nil
 }
 
-func (c *bmemCache[T]) Gets() []T {
+func (c *bmemCache[T]) Gets() ([]T, error) {
 	keys := c.Keys()
 	entries := make([]T, 0, len(keys))
 	for _, key := range keys {
@@ -232,12 +228,15 @@ func (c *bmemCache[T]) Gets() []T {
 		}
 		// ignoring if cache already expired
 	}
-	return entries
+	if len(entries) == 0 {
+		return nil, ErrEmpty
+	}
+	return entries, nil
 }
 
 func (c *bmemCache[T]) GetsFromPrefix(keys ...string) ([]T, error) {
 	if len(keys) == 0 {
-		return c.Gets(), nil
+		return c.Gets()
 	}
 	keysFromPrefix := c.KeysFromPrefix(keys...)
 	entries := make([]T, 0, len(keysFromPrefix))
@@ -249,13 +248,13 @@ func (c *bmemCache[T]) GetsFromPrefix(keys ...string) ([]T, error) {
 		// ignoring if cache already expired
 	}
 	if len(entries) == 0 {
-		return generateEmptyData[[]T](), ErrNotFound
+		return nil, ErrNotFound
 	}
 	return entries, nil
 }
 
 func (c *bmemCache[T]) Delete(keys ...string) error {
-	key := generateCacheKey(c.cacheKeySeparator, keys...)
+	key := serializeKey(keys)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, ok := c.items[key]; !ok {
@@ -270,7 +269,7 @@ func (c *bmemCache[T]) Keys() [][]string {
 	c.mu.RLock()
 	var i int
 	for k := range c.items {
-		keys[i] = deGenerateCacheKey(c.cacheKeySeparator, k)
+		keys[i] = deserializeKey(k)
 		i++
 	}
 	c.mu.RUnlock()
@@ -279,10 +278,7 @@ func (c *bmemCache[T]) Keys() [][]string {
 
 func (c *bmemCache[T]) KeysFromPrefix(keys ...string) [][]string {
 	if len(keys) == 0 {
-		if _, err := c.Get(generateCacheKey(c.cacheKeySeparator, keys...)); err != nil {
-			return [][]string{}
-		}
-		return [][]string{{}}
+		return c.Keys()
 	}
 	var ret [][]string
 	for _, existingKeyFrags := range c.Keys() {
@@ -304,17 +300,15 @@ func (c *bmemCache[T]) KeysFromPrefix(keys ...string) [][]string {
 }
 
 func (c *bmemCache[T]) IsExist(keys ...string) bool {
-	key := generateCacheKey(c.cacheKeySeparator, keys...)
 	c.mu.RLock()
-	_, ok := c.items[key]
+	_, ok := c.items[serializeKey(keys)]
 	c.mu.RUnlock()
 	return ok
 }
 
 func (c *bmemCache[T]) IsExpired(keys ...string) (bool, error) {
-	key := generateCacheKey(c.cacheKeySeparator, keys...)
 	c.mu.RLock()
-	entry, ok := c.items[key]
+	entry, ok := c.items[serializeKey(keys)]
 	c.mu.RUnlock()
 	if !ok {
 		return false, ErrNotFound
@@ -323,9 +317,8 @@ func (c *bmemCache[T]) IsExpired(keys ...string) (bool, error) {
 }
 
 func (c *bmemCache[T]) TTL(keys ...string) (time.Duration, error) {
-	key := generateCacheKey(c.cacheKeySeparator, keys...)
 	c.mu.RLock()
-	entry, ok := c.items[key]
+	entry, ok := c.items[serializeKey(keys)]
 	c.mu.RUnlock()
 	if !ok {
 		return 0, ErrNotFound

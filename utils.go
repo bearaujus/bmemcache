@@ -1,6 +1,8 @@
 package bmemcache
 
-import "strings"
+import (
+	"encoding/json"
+)
 
 // generateEmptyData returns the zero value for a given type T.
 //
@@ -11,33 +13,38 @@ func generateEmptyData[T any]() T {
 	return emptyValue
 }
 
-// generateCacheKey creates a cache key by joining the provided keys using the given separator.
+// serializeKey converts a slice of strings into a JSON-encoded string to be used
+// as a safe cache key.
+//
+// This approach avoids ambiguity caused by string separators when generating
+// composite keys.
 //
 // Parameters:
-//   - separator: The string to use as a separator between keys.
-//   - keys: Variadic list of key parts.
+//   - keys: A slice of strings representing the individual parts of the cache key.
 //
 // Returns:
-//   - A string that represents the combined cache key.
-func generateCacheKey(separator string, keys ...string) string {
-	if len(keys) == 0 {
-		keys = []string{""}
+//   - A JSON-formatted string representing the composite key.
+func serializeKey(keys []string) string {
+	if keys == nil {
+		keys = []string{}
 	}
-	return strings.Join(keys, separator)
+	b, _ := json.Marshal(keys) // Always succeeds for []string
+	return string(b)
 }
 
-// deGenerateCacheKey splits a full cache key back into its individual components
-// based on the provided separator.
+// deserializeKey converts a JSON-encoded cache key string back into its original
+// slice of string components.
+//
+// This function is the inverse of serializeKey and is used for extracting key parts
+// from stored cache map keys.
 //
 // Parameters:
-//   - separator: The string used to split the full key.
-//   - fullKey: The full cache key string to be decomposed.
+//   - s: A JSON-formatted string representing a composite cache key.
 //
 // Returns:
-//   - A slice of strings representing the original key components. Returns an
-func deGenerateCacheKey(separator, fullKey string) []string {
-	if len(fullKey) == 0 {
-		return []string{}
-	}
-	return strings.Split(fullKey, separator)
+//   - A slice of strings representing the original key components.
+func deserializeKey(s string) []string {
+	var keys []string
+	_ = json.Unmarshal([]byte(s), &keys)
+	return keys
 }

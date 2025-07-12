@@ -23,7 +23,6 @@ import "github.com/bearaujus/bmemcache"
 
 - Generic cache with type safety
 - Automatic expiration and cleanup
-- Configurable key generation
 - Simple functions for setting, retrieving, and deleting cache entries
 - Thread-safe package
 
@@ -42,11 +41,8 @@ import (
 )
 
 func main() {
-	// Create a new cache instance with a custom key separator and auto-cleanup enabled every 1 minute.
-	cache := bmemcache.New[string](
-		bmemcache.WithAutoCleanUp(1*time.Minute),
-		bmemcache.WithCacheKeySeparator("|"),
-	)
+	// Create a new cache instance with auto-cleanup enabled every 1 minute.
+	cache := bmemcache.New[string](bmemcache.WithAutoCleanUp(1 * time.Minute))
 	defer cache.Close() // Always close the cache when done.
 
 	// Set a value without expiration.
