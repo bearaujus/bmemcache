@@ -66,7 +66,7 @@ func TestKeys(t *testing.T) {
 	}
 }
 
-func TestKeysFromPrefix(t *testing.T) {
+func TestGet(t *testing.T) {
 	cache := New[string](WithCacheKeySeparator("|"))
 	defer cache.Close()
 
@@ -92,6 +92,76 @@ func TestKeysFromPrefix(t *testing.T) {
 	for _, keyParts := range prefixMatches {
 		if _, err := cache.Get(keyParts...); err != nil {
 			t.Errorf("expected key %v to exist, got error: %v", keyParts, err)
+		}
+	}
+
+	check := map[string]bool{"one": false, "two": false, "short": false, "hi": false}
+	data, err := cache.GetsFromPrefix("a")
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+	for _, v := range data {
+		if _, ok := check[v]; !ok {
+			t.Errorf("expected value %v not to be exist", v)
+		}
+		check[v] = true
+	}
+	for _, v := range check {
+		if !v {
+			t.Errorf("expected value %v to exist", v)
+		}
+	}
+
+	_, err = cache.GetsFromPrefix("a", "b", "c", "d")
+	if err == nil {
+		t.Errorf("expected error, got: %v", err)
+	}
+
+	check = map[string]bool{"three": false}
+	data, err = cache.GetsFromPrefix("x", "y", "z")
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+	for _, v := range data {
+		if _, ok := check[v]; !ok {
+			t.Errorf("expected value %v not to be exist", v)
+		}
+		check[v] = true
+	}
+	for _, v := range check {
+		if !v {
+			t.Errorf("expected value %v to exist", v)
+		}
+	}
+
+	check = map[string]bool{"zero": false, "one": false, "two": false, "three": false, "short": false, "hi": false}
+	data = cache.Gets()
+	for _, v := range data {
+		if _, ok := check[v]; !ok {
+			t.Errorf("expected value %v not to be exist", v)
+		}
+		check[v] = true
+	}
+	for _, v := range check {
+		if !v {
+			t.Errorf("expected value %v to exist", v)
+		}
+	}
+
+	check = map[string]bool{"zero": false, "one": false, "two": false, "three": false, "short": false, "hi": false}
+	data, err = cache.GetsFromPrefix()
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+	for _, v := range data {
+		if _, ok := check[v]; !ok {
+			t.Errorf("expected value %v not to be exist", v)
+		}
+		check[v] = true
+	}
+	for _, v := range check {
+		if !v {
+			t.Errorf("expected value %v to exist", v)
 		}
 	}
 
@@ -132,6 +202,11 @@ func TestKeysFromPrefix(t *testing.T) {
 	empty = cache2.KeysFromPrefix()
 	if len(empty) != 0 {
 		t.Errorf("expected no matches for empty prefix, got: %d", len(empty))
+	}
+
+	data = cache2.Gets()
+	if len(data) != 0 {
+		t.Errorf("expected length 0, got: %v", err)
 	}
 }
 

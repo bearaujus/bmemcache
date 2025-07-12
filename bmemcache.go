@@ -24,6 +24,22 @@ type BMemCache[T any] interface {
 	//   - An error if the key is not found or if the cached entry has expired.
 	Get(keys ...string) (T, error)
 
+	// Gets retrieves all cached data items currently stored.
+	//
+	// Returns:
+	//   - A slice of cached data of type T.
+	Gets() []T
+
+	// GetsFromPrefix retrieves all cached data items whose keys match the specified prefix.
+	//
+	// Parameters:
+	//   - keys: A variadic list of strings used to construct the prefix for matching cache keys.
+	//
+	// Returns:
+	//   - A slice of cached data of type T that match the specified prefix.
+	//   - An error if the key prefix criteria is not found.
+	GetsFromPrefix(keys ...string) ([]T, error)
+
 	// Delete removes an item from the cache based on the provided keys.
 	//
 	// Parameters:
@@ -204,6 +220,38 @@ func (c *bmemCache[T]) Get(keys ...string) (T, error) {
 		return generateEmptyData[T](), ErrExpired
 	}
 	return entry.Data, nil
+}
+
+func (c *bmemCache[T]) Gets() []T {
+	keys := c.Keys()
+	entries := make([]T, 0, len(keys))
+	for _, key := range keys {
+		entry, err := c.Get(key...)
+		if err == nil {
+			entries = append(entries, entry)
+		}
+		// ignoring if cache already expired
+	}
+	return entries
+}
+
+func (c *bmemCache[T]) GetsFromPrefix(keys ...string) ([]T, error) {
+	if len(keys) == 0 {
+		return c.Gets(), nil
+	}
+	keysFromPrefix := c.KeysFromPrefix(keys...)
+	entries := make([]T, 0, len(keysFromPrefix))
+	for _, key := range keysFromPrefix {
+		entry, err := c.Get(key...)
+		if err == nil {
+			entries = append(entries, entry)
+		}
+		// ignoring if cache already expired
+	}
+	if len(entries) == 0 {
+		return generateEmptyData[[]T](), ErrNotFound
+	}
+	return entries, nil
 }
 
 func (c *bmemCache[T]) Delete(keys ...string) error {
