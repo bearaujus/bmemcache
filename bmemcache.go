@@ -254,9 +254,9 @@ func (c *bmemCache[T]) GetsFromPrefix(keys ...string) ([]T, error) {
 }
 
 func (c *bmemCache[T]) Delete(keys ...string) error {
-	key := serializeKey(keys)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	key := serializeKey(keys)
 	if _, ok := c.items[key]; !ok {
 		return ErrNotFound
 	}
@@ -265,14 +265,14 @@ func (c *bmemCache[T]) Delete(keys ...string) error {
 }
 
 func (c *bmemCache[T]) Keys() [][]string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	keys := make([][]string, len(c.items))
-	c.mu.RLock()
 	var i int
 	for k := range c.items {
 		keys[i] = deserializeKey(k)
 		i++
 	}
-	c.mu.RUnlock()
 	return keys
 }
 
